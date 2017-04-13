@@ -156,7 +156,7 @@ public abstract class Mono<T> implements Publisher<T> {
      * }); 
      * <code></pre>
 	 *
-	 * @param callback the consumer who will receive a per-subscriber {@link MonoSink}.
+	 * @param callback Consume the {@link MonoSink} provided per-subscriber by Reactor to generate signals.
 	 * @param <T> The type of the value emitted
 	 * @return a {@link Mono}
 	 */
@@ -229,7 +229,8 @@ public abstract class Mono<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Create a new {@link Mono} that ignores onNext (dropping them) and only react to completion signal.
+	 * Create a new {@link Mono} from a {@link Publisher} that ignores its onNext signals
+	 * (dropping the emitted items) and only react to completion signal.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/thens.png" alt="">
@@ -246,8 +247,8 @@ public abstract class Mono<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Create a {@link Mono} that completes with the specified error immediately after onSubscribe.
-	 *
+	 * Create a {@link Mono} that terminates with the specified error immediately after
+	 * being subscribed to.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/error.png" alt="">
 	 * <p>
@@ -261,15 +262,16 @@ public abstract class Mono<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Pick the first available result coming from any of the given monos and populate a new {@literal Mono}.
-	 *
+	 * Pick the first {@link Mono} to emit any signal (value, empty completion or error)
+	 * and replay that signal, effectively behaving like the fastest of these competing
+	 * sources.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/first.png" alt="">
 	 * <p>
 	 * @param monos The deferred monos to use.
 	 * @param <T> The type of the function result.
 	 *
-	 * @return a {@link Mono}.
+	 * @return a new {@link Mono} behaving like the fastest of its sources.
 	 */
 	@SafeVarargs
 	public static <T> Mono<T> first(Mono<? extends T>... monos) {
