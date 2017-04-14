@@ -1126,10 +1126,11 @@ public abstract class Mono<T> implements Publisher<T> {
 	 *
 	 * {@code mono.as(Flux::from).subscribe() }
 	 *
-	 * @param transformer the {@link Function} applying this {@link Mono}
+	 * @param transformer the {@link Function} to immediately map this {@link Mono}
+	 * into a target type
 	 * @param <P> the returned instance type
 	 *
-	 * @return the transformed {@link Mono} to instance P
+	 * @return the {@link Mono} transformed to an instance of P
 	 * @see #compose for a bounded conversion to {@link Publisher}
 	 */
 	public final <P> P as(Function<? super Mono<T>, P> transformer) {
@@ -1245,6 +1246,8 @@ public abstract class Mono<T> implements Publisher<T> {
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/block.png" alt="">
 	 * <p>
+	 * Note that each block() will trigger a new subscription: in other words, the result
+	 * might miss signal from hot publishers.
 	 *
 	 * @return T the result
 	 */
@@ -1260,13 +1263,12 @@ public abstract class Mono<T> implements Publisher<T> {
 	 * empty. In case the Mono errors, the original exception is thrown (wrapped in a
 	 * {@link RuntimeException} if it was a checked exception).
 	 * If the provided timeout expires,a {@link RuntimeException} is thrown.
-	 * <p>
-	 * Note that each block() will subscribe a new single subscriber: in other words, the result might
-	 * miss signal from hot publishers.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/block.png" alt="">
 	 * <p>
+	 * Note that each block() will trigger a new subscription: in other words, the result
+	 * might miss signal from hot publishers.
 	 *
 	 * @param timeout maximum time period to wait for before raising a {@link RuntimeException}
 	 *

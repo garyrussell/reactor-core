@@ -1815,18 +1815,16 @@ public abstract class Flux<T> implements Publisher<T> {
 		return Mono.onAssembly(new MonoAny<>(this, predicate));
 	}
 
-	//TODO continue from here
 	/**
-	 * Immediately apply the given transformation to this {@link Flux} in order to generate a target type.
+	 * Transform this {@link Flux} into a target type.
 	 *
 	 * {@code flux.as(Mono::from).subscribe() }
 	 *
 	 * @param transformer the {@link Function} to immediately map this {@link Flux}
-	 * into a target type
-	 * instance.
-	 * @param <P> the returned type
+	 * into a target type instance.
+	 * @param <P> the returned instance type
 	 *
-	 * @return a an instance of P
+	 * @return the {@link Flux} transformed to an instance of P
 	 * @see #compose for a bounded conversion to {@link Publisher}
 	 */
 	public final <P> P as(Function<? super Flux<T>, P> transformer) {
@@ -1837,10 +1835,13 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * Intercepts the onSubscribe call and makes sure calls to Subscription methods
 	 * only happen after the child Subscriber has returned from its onSubscribe method.
 	 *
-	 * <p>This helps with child Subscribers that don't expect a recursive call from
-	 * onSubscribe into their onNext because, for example, they request immediately from
-	 * their onSubscribe but don't finish their preparation before that and onNext
-	 * runs into a half-prepared state. This can happen with non Reactor mentality based Subscribers.
+	 * <p>
+	 * This helps with child Subscribers that don't expect a recursive call from
+	 * onSubscribe into their onNext (ie. because they request immediately from
+	 * their onSubscribe but don't finish their preparation before, thus onNext
+	 * runs into a half-prepared state).
+	 * This can happen with external Subscribers that don't follow implementation
+	 * patterns similar to Reactor.
 	 *
 	 * @return non reentrant onSubscribe {@link Flux}
 	 */
@@ -1849,7 +1850,14 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Blocks until the upstream signals its first value or completes.
+	 * Subscribe to this {@link Flux} and <strong>block indefinitely</strong>
+	 * until the upstream signals its first value or completes. Returns that value,
+	 * or null if the Flux completes empty. In case the Flux errors, the original
+	 * exception is thrown (wrapped in a {@link RuntimeException} if it was a checked
+	 * exception).
+	 * <p>
+	 * Note that each blockFirst() will trigger a new subscription: in other words,
+	 * the result might miss signal from hot publishers.
 	 *
 	 * @return the first value or null
 	 */
@@ -1860,21 +1868,35 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Blocks until the upstream signals its first value or completes.
+	 * Subscribe to this {@link Flux} and <strong>block</strong> until the upstream
+	 * signals its first value, completes or a timeout expires. Returns that value,
+	 * or null if the Flux completes empty. In case the Flux errors, the original
+	 * exception is thrown (wrapped in a {@link RuntimeException} if it was a checked
+	 * exception). If the provided timeout expires,a {@link RuntimeException} is thrown.
+	 * <p>
+	 * Note that each blockFirst() will trigger a new subscription: in other words,
+	 * the result might miss signal from hot publishers.
 	 *
-	 * @param d max duration timeout to wait for.
+ 	 * @param timeout maximum time period to wait for before raising a {@link RuntimeException}
 	 * @return the first value or null
 	 */
-	public final T blockFirst(Duration d) {
+	public final T blockFirst(Duration timeout) {
 		BlockingFirstSubscriber<T> subscriber = new BlockingFirstSubscriber<>();
 		subscribe(subscriber);
-		return subscriber.blockingGet(d.toMillis(), TimeUnit.MILLISECONDS);
+		return subscriber.blockingGet(timeout.toMillis(), TimeUnit.MILLISECONDS);
 	}
 
 	/**
-	 * Blocks until the upstream completes and return the last emitted value.
+	 * Subscribe to this {@link Flux} and <strong>block indefinitely</strong>
+	 * until the upstream signals its first value or completes. Returns that value,
+	 * or null if the Flux completes empty. In case the Flux errors, the original
+	 * exception is thrown (wrapped in a {@link RuntimeException} if it was a checked
+	 * exception).
+	 * <p>
+	 * Note that each blockLast() will trigger a new subscription: in other words,
+	 * the result might miss signal from hot publishers.
 	 *
-	 * @return the last value or null
+	 * @return the first value or null
 	 */
 	public final T blockLast() {
 		BlockingLastSubscriber<T> subscriber = new BlockingLastSubscriber<>();
@@ -1884,19 +1906,27 @@ public abstract class Flux<T> implements Publisher<T> {
 
 
 	/**
-	 * Blocks until the upstream completes and return the last emitted value.
+	 * Subscribe to this {@link Flux} and <strong>block</strong> until the upstream
+	 * signals its first value, completes or a timeout expires. Returns that value,
+	 * or null if the Flux completes empty. In case the Flux errors, the original
+	 * exception is thrown (wrapped in a {@link RuntimeException} if it was a checked
+	 * exception). If the provided timeout expires,a {@link RuntimeException} is thrown.
+	 * <p>
+	 * Note that each blockLast() will trigger a new subscription: in other words,
+	 * the result might miss signal from hot publishers.
 	 *
-	 * @param d max duration timeout to wait for.
-	 * @return the last value or null
+	 * @param timeout maximum time period to wait for before raising a {@link RuntimeException}
+	 * @return the first value or null
 	 */
-	public final T blockLast(Duration d) {
+	public final T blockLast(Duration timeout) {
 		BlockingLastSubscriber<T> subscriber = new BlockingLastSubscriber<>();
 		subscribe(subscriber);
-		return subscriber.blockingGet(d.toMillis(), TimeUnit.MILLISECONDS);
+		return subscriber.blockingGet(timeout.toMillis(), TimeUnit.MILLISECONDS);
 	}
 
 	/**
-	 * Collect incoming values into a {@link List} that will be pushed into the returned {@link Flux} on complete only.
+	 * Collect all incoming values into a single {@link List} buffer that will be emitted
+	 * by the returned {@link Flux} once this Flux completes.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffer.png"
 	 * alt="">
@@ -1909,8 +1939,9 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} buckets that will be pushed into the returned {@link Flux}
-	 * when the given max size is reached or onComplete is received.
+	 * Collect incoming values into multiple {@link List} buffers that will be emitted
+	 * by the returned {@link Flux} each time the given max size is reached or once this
+	 * Flux completes.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffersize.png"
 	 * alt="">
@@ -1924,16 +1955,16 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link Collection} buckets that will be
-	 * pushed into the returned {@link Flux}
-	 * when the given max size is reached or onComplete is received.
+	 * Collect incoming values into multiple user-defined {@link Collection} buffers that
+	 * will be emitted by the returned {@link Flux} each time the given max size is reached
+	 * or once this Flux completes.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffersize.png"
 	 * alt="">
 	 *
 	 * @param maxSize the maximum collected size
-	 * @param bufferSupplier the collection to use for each data segment
-	 * @param <C> the supplied {@link Collection} type
+	 * @param bufferSupplier a {@link Supplier} of the concrete {@link Collection} to use for each buffer
+	 * @param <C> the {@link Collection} buffer type
 	 *
 	 * @return a microbatched {@link Flux} of {@link Collection}
 	 */
@@ -1942,9 +1973,10 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} that will be pushed into the returned {@link Flux} when the
-	 * given max size is reached or onComplete is received. A new container {@link List} will be created every given
-	 * skip count.
+	 * Collect incoming values into multiple {@link List} buffers that will be emitted
+	 * by the returned {@link Flux} each time the given max size is reached or once this
+	 * Flux completes. Buffers can be created with gaps, as a new buffer will be created
+	 * every time {@code skip} values have been emitted by the source.
 	 * <p>
 	 * When Skip > Max Size : dropping buffers
 	 * <p>
@@ -1961,7 +1993,7 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffersize.png"
 	 * alt="">
 	 *
-	 * @param skip the number of items to skip before creating a new bucket
+	 * @param skip the number of items to count before creating a new buffer
 	 * @param maxSize the max collected size
 	 *
 	 * @return a microbatched {@link Flux} of possibly overlapped or gapped {@link List}
@@ -1971,11 +2003,10 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link Collection} that will be pushed into
-	 * the returned {@link Flux} when the
-	 * given max size is reached or onComplete is received. A new container
-	 * {@link Collection} will be created every given
-	 * skip count.
+	 * Collect incoming values into multiple user-defined {@link Collection} buffers that
+	 * will be emitted by the returned {@link Flux} each time the given max size is reached
+	 * or once this Flux completes. Buffers can be created with gaps, as a new buffer will
+	 * be created every time {@code skip} values have been emitted by the source
 	 * <p>
 	 * When Skip > Max Size : dropping buffers
 	 * <p>
@@ -1992,10 +2023,10 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffersize.png"
 	 * alt="">
 	 *
-	 * @param skip the number of items to skip before creating a new bucket
+	 * @param skip the number of items to count before creating a new buffer
 	 * @param maxSize the max collected size
-	 * @param bufferSupplier the collection to use for each data segment
-	 * @param <C> the supplied {@link Collection} type
+	 * @param bufferSupplier a {@link Supplier} of the concrete {@link Collection} to use for each buffer
+	 * @param <C> the {@link Collection} buffer type
 	 *
 	 * @return a microbatched {@link Flux} of possibly overlapped or gapped
 	 * {@link Collection}
@@ -2006,40 +2037,42 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} delimited by the given {@link Publisher} signals.
+	 * Collect incoming values into multiple {@link List} buffers, as delimited by the
+	 * signals of a companion {@link Publisher} this operator will subscribe to.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/bufferboundary.png"
 	 * alt="">
 	 *
-	 * @param other the other {@link Publisher}  to subscribe to for emiting and recycling receiving bucket
+	 * @param other the companion {@link Publisher} whose signals trigger new buffers
 	 *
-	 * @return a microbatched {@link Flux} of {@link List} delimited by a
-	 * {@link Publisher}
+	 * @return a microbatched {@link Flux} of {@link List} delimited by signals from a {@link Publisher}
 	 */
 	public final Flux<List<T>> buffer(Publisher<?> other) {
 		return buffer(other, listSupplier());
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link Collection} delimited by the given {@link Publisher} signals.
+	 * Collect incoming values into multiple user-defined {@link Collection} buffers, as
+	 * delimited by the signals of a companion {@link Publisher} this operator will
+	 * subscribe to.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/bufferboundary.png"
 	 * alt="">
 	 *
-	 * @param other the other {@link Publisher}  to subscribe to for emitting and recycling receiving bucket
-	 * @param bufferSupplier the collection to use for each data segment
-	 * @param <C> the supplied {@link Collection} type
+	 * @param other the companion {@link Publisher} whose signals trigger new buffers
+	 * @param bufferSupplier a {@link Supplier} of the concrete {@link Collection} to use for each buffer
+	 * @param <C> the {@link Collection} buffer type
 	 *
-	 * @return a microbatched {@link Flux} of {@link Collection} delimited by a {@link Publisher}
+	 * @return a microbatched {@link Flux} of {@link Collection} delimited by signals from a {@link Publisher}
 	 */
 	public final <C extends Collection<? super T>> Flux<C> buffer(Publisher<?> other, Supplier<C> bufferSupplier) {
 		return onAssembly(new FluxBufferBoundary<>(this, other, bufferSupplier));
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} delimited by the given {@link Publisher} signals. Each {@link
-	 * List} bucket will last until the mapped {@link Publisher} receiving the boundary signal emits, thus releasing the
-	 * bucket to the returned {@link Flux}.
+	 * Collect incoming values into multiple {@link List} buffers started each time an opening
+	 * companion {@link Publisher} emits. Each buffer will last until the corresponding
+	 * closing companion {@link Publisher} emits, thus releasing the buffer to the resulting {@link Flux}.
 	 * <p>
 	 * When Open signal is strictly not overlapping Close signal : dropping buffers
 	 * <p>
@@ -2056,11 +2089,11 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/bufferboundary.png"
 	 * alt="">
 	 *
-	 * @param bucketOpening a {@link Publisher} to subscribe to for creating new receiving bucket signals.
-	 * @param closeSelector a {@link Publisher} factory provided the opening signal and returning a {@link Publisher} to
-	 * subscribe to for emitting relative bucket.
-	 * @param <U> the element type of the bucket-opening sequence
-	 * @param <V> the element type of the bucket-closing sequence
+	 * @param bucketOpening a companion {@link Publisher} to subscribe for buffer creation signals.
+	 * @param closeSelector a factory that, given a buffer opening signal, returns a companion
+	 * {@link Publisher} to subscribe to for buffer closure and emission signals.
+	 * @param <U> the element type of the buffer-opening sequence
+	 * @param <V> the element type of the buffer-closing sequence
 	 *
 	 * @return a microbatched {@link Flux} of {@link List} delimited by an opening {@link Publisher} and a relative
 	 * closing {@link Publisher}
@@ -2071,9 +2104,9 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link Collection} delimited by the given {@link Publisher} signals. Each {@link
-	 * Collection} bucket will last until the mapped {@link Publisher} receiving the boundary signal emits, thus releasing the
-	 * bucket to the returned {@link Flux}.
+	 * Collect incoming values into multiple user-defined {@link Collection} buffers started each time an opening
+	 * companion {@link Publisher} emits. Each buffer will last until the corresponding
+	 * closing companion {@link Publisher} emits, thus releasing the buffer to the resulting {@link Flux}.
 	 * <p>
 	 * When Open signal is strictly not overlapping Close signal : dropping buffers
 	 * <p>
@@ -2090,13 +2123,13 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/bufferboundary.png"
 	 * alt="">
 	 *
-	 * @param bucketOpening a {@link Publisher} to subscribe to for creating new receiving bucket signals.
-	 * @param closeSelector a {@link Publisher} factory provided the opening signal and returning a {@link Publisher} to
-	 * subscribe to for emitting relative bucket.
-	 * @param bufferSupplier the collection to use for each data segment
-	 * @param <U> the element type of the bucket-opening sequence
-	 * @param <V> the element type of the bucket-closing sequence
-	 * @param <C> the supplied {@link Collection} type
+	 * @param bucketOpening a companion {@link Publisher} to subscribe for buffer creation signals.
+	 * @param closeSelector a factory that, given a buffer opening signal, returns a companion
+	 * {@link Publisher} to subscribe to for buffer closure and emission signals.
+	 * @param bufferSupplier a {@link Supplier} of the concrete {@link Collection} to use for each buffer
+	 * @param <U> the element type of the buffer-opening sequence
+	 * @param <V> the element type of the buffer-closing sequence
+	 * @param <C> the {@link Collection} buffer type
 	 *
 	 * @return a microbatched {@link Flux} of {@link Collection} delimited by an opening {@link Publisher} and a relative
 	 * closing {@link Publisher}
@@ -2110,24 +2143,24 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} that will be pushed into the returned {@link Flux} every
-	 * timespan.
+	 * Collect incoming values into multiple {@link List} buffers that will be emitted by
+	 * the returned {@link Flux} every {@code timespan}.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffertimespan.png"
 	 * alt="">
 	 *
-	 * @param timespan the duration to use to release a buffered list
+	 * @param timespan the duration from buffer creation until a buffer is closed and emitted
 	 *
-	 * @return a microbatched {@link Flux} of {@link List} delimited by the given period
+	 * @return a microbatched {@link Flux} of {@link List} delimited by the given time span
 	 */
 	public final Flux<List<T>> buffer(Duration timespan) {
 		return buffer(timespan, Schedulers.parallel());
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} delimited by the given {@code timeshift} period. Each {@link
-	 * List} bucket will last until the {@code timespan} has elapsed, thus releasing the bucket to the returned {@link
-	 * Flux}.
+	 * Collect incoming values into multiple {@link List} buffers created at a given
+	 * {@code timeshift} period. Each buffer will last until the {@code timespan} has elapsed,
+	 * thus emitting the bucket in the resulting {@link Flux}.
 	 * <p>
 	 * When timeshift > timespan : dropping buffers
 	 * <p>
@@ -2144,8 +2177,8 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffertimespan.png"
 	 * alt="">
 	 *
-	 * @param timespan the duration to use to release buffered lists
-	 * @param timeshift the duration to use to create a new bucket
+	 * @param timespan the duration from buffer creation until a buffer is closed and emitted
+	 * @param timeshift the interval at which to create a new buffer
 	 *
 	 * @return a microbatched {@link Flux} of {@link List} delimited by the given period timeshift and sized by timespan
 	 */
@@ -2154,13 +2187,13 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} that will be pushed into the
-	 * returned {@link Flux} every timespan.
+	 * Collect incoming values into multiple {@link List} buffers that will be emitted by
+	 * the returned {@link Flux} every {@code timespan}, as measured on the provided {@link Scheduler}.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffertimespan.png"
 	 * alt="">
 	 *
-	 * @param timespan the {@link Duration} to use to release a buffered list
+	 * @param timespan the duration from buffer creation until a buffer is closed and emitted
 	 * @param timer a time-capable {@link Scheduler} instance to run on
 	 *
 	 * @return a microbatched {@link Flux} of {@link List} delimited by the given period
@@ -2170,9 +2203,10 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} delimited by the given {@code timeshift} period. Each {@link
-	 * List} bucket will last until the {@code timespan} has elapsed, thus releasing the bucket to the returned {@link
-	 * Flux}.
+	 * Collect incoming values into multiple {@link List} buffers created at a given
+	 * {@code timeshift} period, as measured on the provided {@link Scheduler}. Each
+	 * buffer will last until the {@code timespan} has elapsed (also measured on the scheduler),
+	 * thus emitting the bucket in the resulting {@link Flux}.
 	 * <p>
 	 * When timeshift > timespan : dropping buffers
 	 * <p>
@@ -2189,8 +2223,8 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffertimespan.png"
 	 * alt="">
 	 *
-	 * @param timespan the duration to use to release buffered lists
-	 * @param timeshift the duration to use to create a new bucket
+	 * @param timespan the duration from buffer creation until a buffer is closed and emitted
+	 * @param timeshift the interval at which to create a new buffer
 	 * @param timer a time-capable {@link Scheduler} instance to run on
 	 *
 	 * @return a microbatched {@link Flux} of {@link List} delimited by the given period timeshift and sized by timespan
@@ -2204,14 +2238,15 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into a {@link List} that will be pushed into the returned {@link Flux} every timespan OR
-	 * maxSize items.
+	 * Collect incoming values into multiple {@link List} buffers that will be emitted
+	 * by the returned {@link Flux} each time the buffer reaches a maximum size OR the
+	 * timespan {@link Duration} elapses.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffertimespansize.png"
 	 * alt="">
 	 *
 	 * @param maxSize the max collected size
-	 * @param timespan the timeout to use to release a buffered list
+	 * @param timespan the timeout enforcing the release of a partial buffer
 	 *
 	 * @return a microbatched {@link Flux} of {@link List} delimited by given size or a given period timeout
 	 */
@@ -2220,16 +2255,17 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into a {@link Collection} that will be pushed into the returned {@link Flux} every timespan OR
-	 * maxSize items.
+	 * Collect incoming values into multiple user-defined {@link Collection} buffers that
+	 * will be emitted by the returned {@link Flux} each time the buffer reaches a maximum
+	 * size OR the timespan {@link Duration} elapses.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffertimespansize.png"
 	 * alt="">
 	 *
 	 * @param maxSize the max collected size
-	 * @param timespan the timeout to use to release a buffered list
-	 * @param bufferSupplier the collection to use for each data segment
-	 * @param <C> the supplied {@link Collection} type
+	 * @param timespan the timeout enforcing the release of a partial buffer
+	 * @param bufferSupplier a {@link Supplier} of the concrete {@link Collection} to use for each buffer
+	 * @param <C> the {@link Collection} buffer type
 	 * @return a microbatched {@link Flux} of {@link Collection} delimited by given size or a given period timeout
 	 */
 	public final <C extends Collection<? super T>> Flux<C> bufferTimeout(int maxSize, Duration timespan, Supplier<C> bufferSupplier) {
@@ -2238,14 +2274,15 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into a {@link List} that will be pushed into the returned {@link Flux} every timespan OR
-	 * maxSize items
+	 * Collect incoming values into multiple {@link List} buffers that will be emitted
+	 * by the returned {@link Flux} each time the buffer reaches a maximum size OR the
+	 * timespan {@link Duration} elapses, as measured on the provided {@link Scheduler}.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffertimespansize.png"
 	 * alt="">
 	 *
 	 * @param maxSize the max collected size
-	 * @param timespan the timeout to use to release a buffered list
+	 * @param timespan the timeout enforcing the release of a partial buffer
 	 * @param timer a time-capable {@link Scheduler} instance to run on
 	 *
 	 * @return a microbatched {@link Flux} of {@link List} delimited by given size or a given period timeout
@@ -2255,17 +2292,18 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into a {@link Collection} that will be pushed into the returned {@link Flux} every timespan OR
-	 * maxSize items
+	 * Collect incoming values into multiple user-defined {@link Collection} buffers that
+	 * will be emitted by the returned {@link Flux} each time the buffer reaches a maximum
+	 * size OR the timespan {@link Duration} elapses, as measured on the provided {@link Scheduler}.
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/buffertimespansize.png"
 	 * alt="">
 	 *
 	 * @param maxSize the max collected size
-	 * @param timespan the timeout to use to release a buffered collection
+	 * @param timespan the timeout enforcing the release of a partial buffer
 	 * @param timer a time-capable {@link Scheduler} instance to run on
-	 * @param bufferSupplier the collection to use for each data segment
-	 * @param <C> the supplied {@link Collection} type
+	 * @param bufferSupplier a {@link Supplier} of the concrete {@link Collection} to use for each buffer
+	 * @param <C> the {@link Collection} buffer type
 	 * @return a microbatched {@link Flux} of {@link Collection} delimited by given size or a given period timeout
 	 */
 	public final  <C extends Collection<? super T>> Flux<C> bufferTimeout(int maxSize, Duration timespan,
@@ -2274,8 +2312,8 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} that will be pushed into
-	 * the returned {@link Flux} each time the given predicate returns true. Note that
+	 * Collect incoming values into multiple {@link List} buffers that will be emitted by
+	 * the resulting {@link Flux} each time the given predicate returns true. Note that
 	 * the element that triggers the predicate to return true (and thus closes a buffer)
 	 * is included as last element in the emitted buffer.
 	 * <p>
@@ -2295,8 +2333,8 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} that will be pushed into
-	 * the returned {@link Flux} each time the given predicate returns true. Note that
+	 * Collect incoming values into multiple {@link List} buffers that will be emitted by
+	 * the resulting {@link Flux} each time the given predicate returns true. Note that
 	 * the buffer into which the element that triggers the predicate to return true
 	 * (and thus closes a buffer) is included depends on the {@code cutBefore} parameter:
 	 * set it to true to include the boundary element in the newly opened buffer, false to
@@ -2320,8 +2358,8 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect incoming values into multiple {@link List} that will be pushed into
-	 * the returned {@link Flux}. Each buffer continues aggregating values while the
+	 * Collect incoming values into multiple {@link List} buffers that will be emitted by
+	 * the resulting {@link Flux}. Each buffer continues aggregating values while the
 	 * given predicate returns true, and a new buffer is created as soon as the
 	 * predicate returns false... Note that the element that triggers the predicate
 	 * to return false (and thus closes a buffer) is NOT included in any emitted buffer.
@@ -2343,7 +2381,7 @@ public abstract class Flux<T> implements Publisher<T> {
 
 	/**
 	 * Turn this {@link Flux} into a hot source and cache last emitted signals for further {@link Subscriber}. Will
-	 * retain up an unbounded volume of onNext signals. Completion and Error will also be
+	 * retain an unbounded volume of onNext signals. Completion and Error will also be
 	 * replayed.
 	 * <p>
 	 * <img width="500" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/cache.png"
@@ -2363,7 +2401,7 @@ public abstract class Flux<T> implements Publisher<T> {
 	 * <p>
 	 * <img width="500" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/cache.png" alt="">
 	 *
-	 * @param history number of events retained in history excluding complete and error
+	 * @param history number of elements retained in cache
 	 *
 	 * @return a replaying {@link Flux}
 	 *
@@ -2374,9 +2412,8 @@ public abstract class Flux<T> implements Publisher<T> {
 
 	/**
 	 * Turn this {@link Flux} into a hot source and cache last emitted signals for further
-	 * {@link Subscriber}. Will retain an unbounded history with per-item expiry timeout
+	 * {@link Subscriber}. Will retain an unbounded history but apply a per-item expiry timeout
 	 * Completion and Error will also be replayed.
-	 * <p>
 	 * <p>
 	 * <img width="500" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/cache.png"
 	 * alt="">
@@ -2391,14 +2428,13 @@ public abstract class Flux<T> implements Publisher<T> {
 
 	/**
 	 * Turn this {@link Flux} into a hot source and cache last emitted signals for further
-	 * {@link Subscriber}. Will retain up to the given history size  with per-item expiry
+	 * {@link Subscriber}. Will retain up to the given history size and apply a per-item expiry
 	 * timeout.
-	 * <p>
 	 * <p>
 	 * <img width="500" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/cache.png"
 	 * alt="">
 	 *
-	 * @param history number of events retained in history excluding complete and error
+	 * @param history number of elements retained in cache
 	 * @param ttl Time-to-live for each cached item.
 	 *
 	 * @return a replaying {@link Flux}
@@ -2469,18 +2505,18 @@ public abstract class Flux<T> implements Publisher<T> {
 
 
 	/**
-	 * Collect the {@link Flux} sequence with the given collector and supplied container on subscribe.
+	 * Collect all elements emitted by this {@link Flux} into a user-defined container,
+	 * by applying a collector {@link BiConsumer} taking the container and each element.
 	 * The collected result will be emitted when this sequence completes.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collect.png" alt="">
-
 	 *
-	 * @param <E> the {@link Flux} collected container type
+	 * @param <E> the container type
 	 * @param containerSupplier the supplier of the container instance for each Subscriber
-	 * @param collector the consumer of both the container instance and the current value
+	 * @param collector a consumer of both the container instance and the value being currently collected
 	 *
-	 * @return a {@link Mono} sequence of the collected value on complete
+	 * @return a {@link Mono} of the collected container on complete
 	 *
 	 */
 	public final <E> Mono<E> collect(Supplier<E> containerSupplier, BiConsumer<E, ? super T> collector) {
@@ -2488,18 +2524,18 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Collect the {@link Flux} sequence with the given collector and supplied container on subscribe.
+	 * Collect all elements emitted by this {@link Flux} into a container,
+	 * by applying a Java 8 Stream API {@link Collector}
 	 * The collected result will be emitted when this sequence completes.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collect.png" alt="">
-
 	 *
 	 * @param collector the {@link Collector}
 	 * @param <A> The mutable accumulation type
-	 * @param <R> the {@link Flux} collected container type
+	 * @param <R> the container type
 	 *
-	 * @return a {@link Mono} sequence of the collected value on complete
+	 * @return a {@link Mono} of the collected container on complete
 	 *
 	 */
 	public final <R, A> Mono<R> collect(Collector<? super T, A, ? extends R> collector) {
@@ -2507,15 +2543,13 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Accumulate this {@link Flux} sequence in a {@link List} that is emitted to the returned {@link Mono} on
-	 * onComplete.
+	 * Collect all elements emitted by this {@link Flux} into a {@link List} that is
+	 * emitted by the resulting {@link Mono} when this sequence completes.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collectlist.png" alt="">
 	 *
-	 * @return a {@link Mono} of all values from this {@link Flux}
-	 *
-	 *
+	 * @return a {@link Mono} of a {@link List} of all values from this {@link Flux}
 	 */
 	public final Mono<List<T>> collectList() {
 		if (this instanceof Callable) {
@@ -2546,17 +2580,20 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Convert all this
-	 * {@link Flux} sequence into a hashed map where the key is extracted by the given {@link Function} and the
-	 * value will be the most recent emitted item for this key.
+	 * Collect all elements emitted by this {@link Flux} into a hashed {@link Map} that is
+	 * emitted by the resulting {@link Mono} when this sequence completes.
+	 * The key is extracted from each element by applying the {@code keyExtractor}
+	 * {@link Function}. In case several elements map to the same key, the associated value
+	 * will be the most recently emitted element.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collectmap.png" alt="">
 	 *
-	 * @param keyExtractor a {@link Function} to route items into a keyed {@link Collection}
-	 * @param <K> the key extracted from each value of this Flux instance
+	 * @param keyExtractor a {@link Function} to map elements to a key for the {@link Map}
+	 * @param <K> the type of the key extracted from each source element
 	 *
-	 * @return a {@link Mono} of all last matched key-values from this {@link Flux}
+	 * @return a {@link Mono} of a {@link Map} of key-element pairs (only including latest
+	 * element in case of key conflicts)
 	 *
 	 */
 	public final <K> Mono<Map<K, T>> collectMap(Function<? super T, ? extends K> keyExtractor) {
@@ -2564,20 +2601,24 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Convert all this {@link Flux} sequence into a hashed map where the key is extracted by the given function and the value will be
-	 * the most recent extracted item for this key.
+	 * Collect all elements emitted by this {@link Flux} into a hashed {@link Map} that is
+	 * emitted by the resulting {@link Mono} when this sequence completes.
+	 * The key is extracted from each element by applying the {@code keyExtractor}
+	 * {@link Function}, and the value is extracted by the {@code valueExtractor} Function.
+	 * In case several elements map to the same key, the associated value will be derived
+	 * from the most recently emitted element.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collectmap.png" alt="">
 	 *
-	 * @param keyExtractor a {@link Function} to route items into a keyed {@link Collection}
-	 * @param valueExtractor a {@link Function} to select the data to store from each item
+	 * @param keyExtractor a {@link Function} to map elements to a key for the {@link Map}
+	 * @param valueExtractor a {@link Function} to map elements to a value for the {@link Map}
 	 *
-	 * @param <K> the key extracted from each value of this Flux instance
-	 * @param <V> the value extracted from each value of this Flux instance
+	 * @param <K> the type of the key extracted from each source element
+	 * @param <V> the type of the value extracted from each source element
 	 *
-	 * @return a {@link Mono} of all last matched key-values from this {@link Flux}
-	 *
+	 * @return a {@link Mono} of a {@link Map} of key-element pairs (only including latest
+	 * element's value in case of key conflicts)
 	 */
 	public final <K, V> Mono<Map<K, V>> collectMap(Function<? super T, ? extends K> keyExtractor,
 			Function<? super T, ? extends V> valueExtractor) {
@@ -2585,21 +2626,25 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Convert all this {@link Flux} sequence into a supplied map where the key is extracted by the given function and the value will
-	 * be the most recent extracted item for this key.
+	 * Collect all elements emitted by this {@link Flux} into a user-defined {@link Map} that is
+	 * emitted by the resulting {@link Mono} when this sequence completes.
+	 * The key is extracted from each element by applying the {@code keyExtractor}
+	 * {@link Function}, and the value is extracted by the {@code valueExtractor} Function.
+	 * In case several elements map to the same key, the associated value will be derived
+	 * from the most recently emitted element.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collectmap.png" alt="">
 	 *
-	 * @param keyExtractor a {@link Function} to route items into a keyed {@link Collection}
-	 * @param valueExtractor a {@link Function} to select the data to store from each item
+	 * @param keyExtractor a {@link Function} to map elements to a key for the {@link Map}
+	 * @param valueExtractor a {@link Function} to map elements to a value for the {@link Map}
 	 * @param mapSupplier a {@link Map} factory called for each {@link Subscriber}
 	 *
-	 * @param <K> the key extracted from each value of this Flux instance
-	 * @param <V> the value extracted from each value of this Flux instance
+	 * @param <K> the type of the key extracted from each source element
+	 * @param <V> the type of the value extracted from each source element
 	 *
-	 * @return a {@link Mono} of all last matched key-values from this {@link Flux}
-	 *
+	 * @return a {@link Mono} of a {@link Map} of key-value pairs (only including latest
+	 * element's value in case of key conflicts)
 	 */
 	public final <K, V> Mono<Map<K, V>> collectMap(
 			final Function<? super T, ? extends K> keyExtractor,
@@ -2612,38 +2657,42 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Convert this {@link Flux} sequence into a hashed map where the key is extracted by the given function and the value will be
-	 * all the emitted item for this key.
+	 * Collect all elements emitted by this {@link Flux} into a {@link Map multimap} that is
+	 * emitted by the resulting {@link Mono} when this sequence completes.
+	 * The key is extracted from each element by applying the {@code keyExtractor}
+	 * {@link Function}, and every element mapping to the same key is stored in the {@link List}
+	 * associated to said key.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collectmultimap.png" alt="">
 	 *
-	 * @param keyExtractor a {@link Function} to route items into a keyed {@link Collection}
+	 * @param keyExtractor a {@link Function} to map elements to a key for the {@link Map}
 	 *
-	 * @param <K> the key extracted from each value of this Flux instance
-	 *
-	 * @return a {@link Mono} of all matched key-values from this {@link Flux}
-	 *
+	 * @param <K> the type of the key extracted from each source element
+	 * @return a {@link Mono} of a {@link Map} of key-List(elements) pairs
 	 */
 	public final <K> Mono<Map<K, Collection<T>>> collectMultimap(Function<? super T, ? extends K> keyExtractor) {
 		return collectMultimap(keyExtractor, identityFunction());
 	}
 
 	/**
-	 * Convert this {@link Flux} sequence into a hashed map where the key is extracted by the given function and the value will be
-	 * all the extracted items for this key.
+	 * Collect all elements emitted by this {@link Flux} into a {@link Map multimap} that is
+	 * emitted by the resulting {@link Mono} when this sequence completes.
+	 * The key is extracted from each element by applying the {@code keyExtractor}
+	 * {@link Function}, and every element mapping to the same key is converted by the
+	 * {@code valueExtractor} Function to a value stored in the {@link List} associated to
+	 * said key.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collectmultimap.png" alt="">
 	 *
-	 * @param keyExtractor a {@link Function} to route items into a keyed {@link Collection}
-	 * @param valueExtractor a {@link Function} to select the data to store from each item
+	 * @param keyExtractor a {@link Function} to map elements to a key for the {@link Map}
+	 * @param valueExtractor a {@link Function} to map elements to a value for the {@link Map}
 	 *
-	 * @param <K> the key extracted from each value of this Flux instance
-	 * @param <V> the value extracted from each value of this Flux instance
+	 * @param <K> the type of the key extracted from each source element
+	 * @param <V> the type of the value extracted from each source element
 	 *
-	 * @return a {@link Mono} of all matched key-values from this {@link Flux}
-	 *
+	 * @return a {@link Mono} of a {@link Map} of key-List(values) pairs
 	 */
 	public final <K, V> Mono<Map<K, Collection<V>>> collectMultimap(Function<? super T, ? extends K> keyExtractor,
 			Function<? super T, ? extends V> valueExtractor) {
@@ -2651,20 +2700,25 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Convert this {@link Flux} sequence into a supplied map where the key is extracted by the given function and the value will
-	 * be all the extracted items for this key.
+	 * Collect all elements emitted by this {@link Flux} into a user-defined {@link Map multimap} that is
+	 * emitted by the resulting {@link Mono} when this sequence completes.
+	 * The key is extracted from each element by applying the {@code keyExtractor}
+	 * {@link Function}, and every element mapping to the same key is converted by the
+	 * {@code valueExtractor} Function to a value stored in the {@link Collection} associated to
+	 * said key.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collectmultimap.png" alt="">
 	 *
-	 * @param keyExtractor a {@link Function} to route items into a keyed {@link Collection}
-	 * @param valueExtractor a {@link Function} to select the data to store from each item
-	 * @param mapSupplier a {@link Map} factory called for each {@link Subscriber}
+	 * @param keyExtractor a {@link Function} to map elements to a key for the {@link Map}
+	 * @param valueExtractor a {@link Function} to map elements to a value for the {@link Map}
+	 * @param mapSupplier a multimap ({@link Map} of {@link Collection}) factory called
+	 * for each {@link Subscriber}
 	 *
-	 * @param <K> the key extracted from each value of this Flux instance
-	 * @param <V> the value extracted from each value of this Flux instance
+	 * @param <K> the type of the key extracted from each source element
+	 * @param <V> the type of the value extracted from each source element
 	 *
-	 * @return a {@link Mono} of all matched key-values from this {@link Flux}
+	 * @return a {@link Mono} of a {@link Map} of key-Collection(values) pairs
 	 *
 	 */
 	public final <K, V> Mono<Map<K, Collection<V>>> collectMultimap(
@@ -2682,31 +2736,30 @@ public abstract class Flux<T> implements Publisher<T> {
 	}
 
 	/**
-	 * Accumulate and sort this {@link Flux} sequence in a {@link List} that is emitted to the returned {@link Mono} on
-	 * onComplete.
+	 * Collect all elements emitted by this {@link Flux} until this sequence completes,
+	 * and then sort them in natural order into a {@link List} that is emitted by the
+	 * resulting {@link Mono}.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collectsortedlist.png" alt="">
 	 *
-	 * @return a {@link Mono} of all sorted values from this {@link Flux}
-	 *
+	 * @return a {@link Mono} of a sorted {@link List} of all values from this {@link Flux}, in natural order
 	 */
 	public final Mono<List<T>> collectSortedList() {
 		return collectSortedList(null);
 	}
 
 	/**
-	 * Accumulate and sort using the given comparator this
-	 * {@link Flux} sequence in a {@link List} that is emitted to the returned {@link Mono} on
-	 * onComplete.
+	 * Collect all elements emitted by this {@link Flux} until this sequence completes,
+	 * and then sort them using a {@link Comparator} into a {@link List} that is emitted
+	 * by the resulting {@link Mono}.
 	 *
 	 * <p>
 	 * <img class="marble" src="https://raw.githubusercontent.com/reactor/reactor-core/v3.0.6.RELEASE/src/docs/marble/collectsortedlist.png" alt="">
 	 *
 	 * @param comparator a {@link Comparator} to sort the items of this sequences
 	 *
-	 * @return a {@link Mono} of all sorted values from this {@link Flux}
-	 *
+	 * @return a {@link Mono} of a sorted {@link List} of all values from this {@link Flux}
 	 */
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public final Mono<List<T>> collectSortedList(Comparator<? super T> comparator) {
@@ -2722,6 +2775,8 @@ public abstract class Flux<T> implements Publisher<T> {
 			return list;
 		});
 	}
+
+	//TODO continue javadoc review from here
 
 	/**
 	 * Defer the transformation of this {@link Flux} in order to generate a target {@link Flux} for each
